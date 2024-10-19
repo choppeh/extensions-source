@@ -1,0 +1,9 @@
+ext {
+    extName = 'Ken Scans'
+    extClass = '.KenScans'
+    themePkg = 'keyoapp'
+    baseUrl = 'https://kenscans.com'
+    overrideVersionCode = 0
+}
+
+apply from: "$rootDir/common.gradle"
