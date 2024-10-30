@@ -30,48 +30,35 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-class BlackoutComics : ParsedHttpSource(), ConfigurableSource {
+class ToptoonComics : ParsedHttpSource(), ConfigurableSource {
 
-    override val name = "Blackout Comics"
+    override val name = "Toptoon Comics"
 
-    override val baseUrl = "https://blackoutcomics.com"
+    override val baseUrl = "https://toptoon.com.co"
 
     override val lang = "pt-BR"
 
     override val supportsLatest = true
 
+    override val id = 4905303791571172293
+
     override val client by lazy {
         network.client.newBuilder()
             .addInterceptor { chain ->
-                checkingCredentials()
+                if (credentials.isEmpty) {
+                    throw IOException("Configure suas credencias em Extensões > $name > Configuração")
+                }
 
                 val request = chain.request()
                 val response = chain.proceed(request)
 
-                if (response.request.url.pathSegments.contains("temp")) {
+                if (response.isLoginPage()) {
                     return@addInterceptor doAuth(chain, request, response)
                 }
                 response
             }
             .rateLimitHost(baseUrl.toHttpUrl(), 2)
             .build()
-    }
-
-    private val credentials: Pair<String, String> get() {
-        val username = preferences.getString(USERNAME_PREF, "")!!
-        val password = preferences.getString(PASSWORD_PREF, "")!!
-        return username to password
-    }
-
-    private fun checkingCredentials() {
-        val (username, password) = credentials
-        if (username.isBlank() || password.isBlank()) {
-            throw IOException(
-                """
-                Configure suas credencias em Extensões > $name > Configuração.
-                """.trimIndent(),
-            )
-        }
     }
 
     private fun doAuth(chain: Interceptor.Chain, request: Request, response: Response): Response {
@@ -81,11 +68,20 @@ class BlackoutComics : ParsedHttpSource(), ConfigurableSource {
 
         val form = FormBody.Builder()
             .add("_token", csrf)
-            .add("email", credentials.first)
-            .add("password", credentials.second)
+            .add("email", credentials.email)
+            .add("password", credentials.password)
             .build()
 
-        chain.proceed(POST("$baseUrl/blackout/login", headers, form)).use {
+        val formHeaders = headers.newBuilder()
+            .set("Origin", baseUrl)
+            .set("Referer", "$baseUrl/temp/login")
+            .set("Sec-Fetch-User", "?1")
+            .set("Sec-Fetch-Site", "same-origin")
+            .set("Sec-Fetch-Mode", "navigate")
+            .set("Sec-Fetch-Dest", "document")
+            .build()
+
+        chain.proceed(POST("$baseUrl/blackout/login", formHeaders, form)).use {
             if (it.request.url.pathSegments.contains("temp")) {
                 throw IOException(
                     """
@@ -101,12 +97,10 @@ class BlackoutComics : ParsedHttpSource(), ConfigurableSource {
     private val preferences: SharedPreferences =
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
 
-    override fun headersBuilder() =
-        super.headersBuilder()
-            .add("Referer", "$baseUrl/")
-            .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
-            .add("Accept-Language", "en-US,en;q=0.5")
-            .set("X-Requested-With", randomString((1..20).random()))
+    override fun headersBuilder() = super.headersBuilder()
+        .add("Referer", "$baseUrl/")
+        .add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .add("Accept-Language", "en-US,en;q=0.5")
 
     // ============================== Popular ===============================
     override fun popularMangaRequest(page: Int) = GET("$baseUrl/ranking")
@@ -165,12 +159,9 @@ class BlackoutComics : ParsedHttpSource(), ConfigurableSource {
     override fun mangaDetailsParse(document: Document) = SManga.create().apply {
         val row = document.selectFirst("div.special-edition")!!
         thumbnail_url = row.selectFirst("img:last-child")?.absUrl("src")
-        title = row.select("h2")
-            .first { it.classNames().isEmpty() }!!
-            .text()
+        title = row.select("h2:not([class])").text()
 
         with(row.selectFirst("div.trailer-content:has(h3:containsOwn(Detalhes))")!!) {
-            println(outerHtml())
             artist = getInfo("Artista")
             author = getInfo("Autor")
             genre = getInfo("Genêros")
@@ -186,7 +177,7 @@ class BlackoutComics : ParsedHttpSource(), ConfigurableSource {
                     append("$it\n\n")
                 }
 
-                row.selectFirst("h2:contains($title) + p")?.ownText()?.also {
+                row.selectFirst("h2:contains(\"$title\") + p")?.ownText()?.also {
                     // Alternative title
                     append("Título alternativo: $it\n")
                 }
@@ -214,7 +205,6 @@ class BlackoutComics : ParsedHttpSource(), ConfigurableSource {
         element.selectFirst("form + a")!!.run {
             setUrlWithoutDomain(attr("href"))
             name = text()
-            chapter_number = name.substringAfter(" ").toFloatOrNull() ?: 1F
         }
 
         date_upload = element.selectFirst("form + a + span")?.text().orEmpty().toDate()
@@ -224,7 +214,7 @@ class BlackoutComics : ParsedHttpSource(), ConfigurableSource {
     override fun pageListParse(document: Document): List<Page> {
         return document.select("div[class*=cap] canvas[height][width]").mapIndexed { index, item ->
             val attr = item.attributes()
-                .firstOrNull { it.value.contains("/assets/obras", ignoreCase = true) }
+                .firstOrNull { URL_REGEX.containsMatchIn(it.value) }
                 ?.key ?: throw Exception("Capitulo não pode ser obtido")
 
             Page(index, "", item.absUrl(attr))
@@ -236,6 +226,14 @@ class BlackoutComics : ParsedHttpSource(), ConfigurableSource {
     }
 
     // ============================= Utilities ==============================
+
+    private val credentials: Credential get() = Credential(
+        email = preferences.getString(USERNAME_PREF, "")!!,
+        password = preferences.getString(PASSWORD_PREF, "")!!,
+    )
+
+    private fun Response.isLoginPage() = request.url.pathSegments.contains("temp")
+
     private fun String.toDate(): Long {
         return runCatching { DATE_FORMATTER.parse(trim())?.time }
             .getOrNull() ?: 0L
@@ -247,27 +245,28 @@ class BlackoutComics : ParsedHttpSource(), ConfigurableSource {
     }
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        val warning = "⚠️ Os dados inseridos nessa seção serão usados somente para realizar o login na fonte"
+        val message = "Insira %s para prosseguir com o acesso aos recursos disponíveis na fonte"
+
         val usernamePref = EditTextPreference(screen.context).apply {
+            title = "📧 Email"
             key = USERNAME_PREF
-            summary = "Email de acesso. Necessário reiniciar o app"
-            title = "Usuário"
-
-            dialogMessage = """
-            Configure seu usuário para acessar o contéudo.
-            """.trimIndent()
-
+            summary = "Email de acesso"
+            dialogMessage = buildString {
+                appendLine(message.format("seu email"))
+                append("\n$warning")
+            }
             setDefaultValue("")
         }
 
         val passwordPref = EditTextPreference(screen.context).apply {
+            title = "🔑 Senha"
             key = PASSWORD_PREF
-            summary = "Senha de acesso. Necessário reiniciar o app"
-            title = "Senha"
-
-            dialogMessage = """
-            Configure seu senha para acessar o contéudo.
-            """.trimIndent()
-
+            summary = "Senha de acesso"
+            dialogMessage = buildString {
+                appendLine(message.format("sua senha"))
+                append("\n$warning")
+            }
             setDefaultValue("")
         }
 
@@ -275,10 +274,18 @@ class BlackoutComics : ParsedHttpSource(), ConfigurableSource {
         screen.addPreference(passwordPref)
     }
 
+    class Credential(
+        val email: String,
+        val password: String,
+    ) {
+        val isEmpty: Boolean get() = email.isBlank() || password.isBlank()
+    }
+
     companion object {
         const val PREFIX_SEARCH = "id:"
         const val USERNAME_PREF = "BLACKOUT_USERNAME"
         const val PASSWORD_PREF = "BLACKOUT_PASSWORD"
+        val URL_REGEX = """^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)|^\/[-a-zA-Z0-9()@:%_\+.~#?&//=]*$""".toRegex()
 
         private val DATE_FORMATTER by lazy {
             SimpleDateFormat("dd/MM/yyyy", Locale.ENGLISH)

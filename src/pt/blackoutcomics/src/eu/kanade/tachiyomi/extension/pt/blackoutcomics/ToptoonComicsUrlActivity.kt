@@ -11,7 +11,7 @@ import kotlin.system.exitProcess
  * Springboard that accepts https://blackoutcomics.com/comics/<item> intents
  * and redirects them to the main Tachiyomi process.
  */
-class BlackoutComicsUrlActivity : Activity() {
+class ToptoonComicsUrlActivity : Activity() {
 
     private val tag = javaClass.simpleName
 
@@ -22,7 +22,7 @@ class BlackoutComicsUrlActivity : Activity() {
             val item = pathSegments[1]
             val mainIntent = Intent().apply {
                 action = "eu.kanade.tachiyomi.SEARCH"
-                putExtra("query", "${BlackoutComics.PREFIX_SEARCH}$item")
+                putExtra("query", "${ToptoonComics.PREFIX_SEARCH}$item")
                 putExtra("filter", packageName)
             }
 
