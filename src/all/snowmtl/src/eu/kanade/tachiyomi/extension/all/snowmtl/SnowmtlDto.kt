@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.extension.en.snowmtl
+package eu.kanade.tachiyomi.extension.all.snowmtl
 
 import android.graphics.Color
 import android.os.Build
@@ -24,7 +24,7 @@ class PageDto(
 
 @Serializable
 @RequiresApi(Build.VERSION_CODES.O)
-class Translation(
+data class Translation(
     val x1: Float,
     val y1: Float,
     val x2: Float,

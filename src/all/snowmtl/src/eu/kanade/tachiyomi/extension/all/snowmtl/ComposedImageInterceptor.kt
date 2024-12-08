@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.extension.en.snowmtl
+package eu.kanade.tachiyomi.extension.all.snowmtl
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -12,6 +12,7 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import androidx.annotation.RequiresApi
+import eu.kanade.tachiyomi.extension.all.snowmtl.Snowmtl.Companion.PAGE_REGEX
 import eu.kanade.tachiyomi.network.GET
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -48,8 +49,7 @@ class ComposedImageInterceptor(
         val request = chain.request()
         val url = request.url.toString()
 
-        val isPageImageUrl = url.contains("${baseUrl.substringAfterLast("/")}/storage/", true)
-        if (isPageImageUrl.not()) {
+        if (PAGE_REGEX.containsMatchIn(url).not()) {
             return chain.proceed(request)
         }
 

@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.extension.en.snowmtl
+package eu.kanade.tachiyomi.extension.all.snowmtl
 
 import android.os.Build
 import androidx.annotation.RequiresApi
@@ -24,14 +24,16 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 
-@RequiresApi(Build.VERSION_CODES.M)
-class Snowmtl : ParsedHttpSource() {
+@RequiresApi(Build.VERSION_CODES.O)
+class Snowmtl(
+    source: Source,
+) : ParsedHttpSource() {
 
     override val name = "Snow Machine Translations"
 
     override val baseUrl = "https://snowmtl.ru"
 
-    override val lang = "en"
+    override val lang = source.lang
 
     override val supportsLatest = true
 
@@ -39,6 +41,7 @@ class Snowmtl : ParsedHttpSource() {
 
     override val client = network.cloudflareClient.newBuilder()
         .rateLimit(2)
+        .addInterceptor(TranslateInterceptor(source, super.client))
         .addInterceptor(ComposedImageInterceptor(baseUrl, super.client))
         .build()
 
@@ -203,6 +206,11 @@ class Snowmtl : ParsedHttpSource() {
     }
 
     companion object {
+
+        val PAGE_REGEX = Regex(
+            ".*?\\.(webp|png|jpg|jpeg)#\\[.*?]",
+            RegexOption.IGNORE_CASE,
+        )
         const val PREFIX_SEARCH = "id:"
         private val dateFormat: SimpleDateFormat = SimpleDateFormat("dd MMMM yyyy", Locale.US)
     }
