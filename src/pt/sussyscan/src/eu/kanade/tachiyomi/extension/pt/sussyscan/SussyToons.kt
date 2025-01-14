@@ -309,7 +309,7 @@ class SussyToons : HttpSource(), ConfigurableSource {
                 .build()
 
             val localResponse = chain.proceed(newRequest)
-            if(localResponse.isSuccessful.not()) {
+            if (localResponse.isSuccessful.not()) {
                 localResponse.close()
                 return@forEach
             }
