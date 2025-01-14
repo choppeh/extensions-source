@@ -308,9 +308,13 @@ class SussyToons : HttpSource(), ConfigurableSource {
                 .url(url)
                 .build()
 
-            return chain.proceed(newRequest).takeIf(Response::isSuccessful).also {
-                apiUrl = preferences.prefApiUrlUpSet(urlCandidate)
-            } ?: return@forEach
+            val localResponse = chain.proceed(newRequest)
+            if(localResponse.isSuccessful.not()) {
+                localResponse.close()
+                return@forEach
+            }
+            apiUrl = preferences.prefApiUrlUpSet(urlCandidate)
+            return localResponse
         }
 
         throw IOException(
