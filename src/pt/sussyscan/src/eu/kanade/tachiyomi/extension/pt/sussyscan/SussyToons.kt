@@ -37,7 +37,6 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
 import java.io.IOException
-import java.net.SocketTimeoutException
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
@@ -63,11 +62,9 @@ class SussyToons : HttpSource(), ConfigurableSource {
     private val preferences: SharedPreferences =
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
 
-    private var _apiUrlCache: String? = null
-
     private var apiUrl: String
-        get() = _apiUrlCache ?: preferences.prefApiUrl.also { _apiUrlCache = it }
-        set(value) { _apiUrlCache = value }
+        get() = preferences.prefApiUrl
+        set(value) = preferences.prefApiUrlUpSet(value)
 
     override val baseUrl: String get() = when {
         isCi -> defaultBaseUrl
@@ -76,10 +73,8 @@ class SussyToons : HttpSource(), ConfigurableSource {
 
     private val SharedPreferences.prefBaseUrl: String get() = getString(BASE_URL_PREF, defaultBaseUrl)!!
     private val SharedPreferences.prefApiUrl: String get() = getString(API_BASE_URL_PREF, defaultApiUrl)!!
-    private fun SharedPreferences.prefApiUrlUpSet(url: String): String {
-        edit().putString(API_BASE_URL_PREF, url)
-            .apply()
-        return url
+    private fun SharedPreferences.prefApiUrlUpSet(url: String) {
+        edit().putString(API_BASE_URL_PREF, url).apply()
     }
 
     private val defaultBaseUrl: String = "https://www.sussytoons.site"
@@ -285,15 +280,11 @@ class SussyToons : HttpSource(), ConfigurableSource {
         val request = chain.request()
         val response: Response = try {
             chain.proceed(request)
-        } catch (ex: SocketTimeoutException) {
-            chain.createTimeoutResponse(request)
+        } catch (ex: Exception) {
+            chain.createBadGatewayResponse(request)
         }
 
-        if (request.url.toString().contains(apiUrl).not()) {
-            return response
-        }
-
-        if (response.isSuccessful) {
+        if (response.isSuccessful || request.url.toString().contains(apiUrl).not()) {
             return response
         }
 
@@ -308,9 +299,13 @@ class SussyToons : HttpSource(), ConfigurableSource {
                 .url(url)
                 .build()
 
-            return chain.proceed(newRequest).takeIf(Response::isSuccessful).also {
-                apiUrl = preferences.prefApiUrlUpSet(urlCandidate)
-            } ?: return@forEach
+            val localResponse = chain.proceed(newRequest)
+            if (localResponse.isSuccessful.not()) {
+                localResponse.close()
+                return@forEach
+            }
+            apiUrl = urlCandidate
+            return localResponse
         }
 
         throw IOException(
@@ -320,7 +315,7 @@ class SussyToons : HttpSource(), ConfigurableSource {
             },
         )
     }
-    private fun Interceptor.Chain.createTimeoutResponse(request: Request): Response {
+    private fun Interceptor.Chain.createBadGatewayResponse(request: Request): Response {
         return Response.Builder()
             .request(request)
             .protocol(Protocol.HTTP_1_1)
