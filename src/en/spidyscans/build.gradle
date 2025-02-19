@@ -1,0 +1,10 @@
+ext {
+    extName = 'Spidy Scans'
+    extClass = '.SpidyScans'
+    themePkg = 'madara'
+    baseUrl = 'https://spidyscans.xyz'
+    overrideVersionCode = 0
+    isNsfw = true
+}
+
+apply from: "$rootDir/common.gradle"
